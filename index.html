@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>مسیر آینه ۲.۰</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; touch-action: none; }
+    body { font-family: Tahoma, sans-serif; background: #000; color: #fff; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+    #game-area { position: relative; width: 100%; max-width: 400px; height: 100%; max-height: 750px; background: #1a1a2e; overflow: hidden; border-radius: 15px; transition: background-color 0.6s; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+    #game-area.glowing { animation: intenseGlow 0.6s infinite ease-in-out; }
+    @keyframes intenseGlow { 0%, 100% { box-shadow: inset 0 0 10px rgba(255,215,0,0), 0 0 20px rgba(0,0,0,0.8); } 50% { box-shadow: inset 0 0 100px rgba(255,215,0,0.6), 0 0 20px rgba(0,0,0,0.8); } }
+    
+    /* دکمه‌های بالا */
+    .top-btn { position: absolute; top: 15px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); color: #fff; padding: 6px 12px; border-radius: 20px; font-size: 16px; cursor: pointer; z-index: 100; }
+    #pause-btn { right: 15px; display: none; }
+    #sound-btn { right: 70px; display: none; }
+    #pause-btn.show, #sound-btn.show { display: block; }
+
+    /* HUD */
+    #top-hud { position: absolute; top: 60px; width: 100%; display: flex; justify-content: center; gap: 15px; z-index: 5; font-weight: bold; text-shadow: 0 2px 5px #000; }
+    #score-display { font-size: 24px; color: #00e5ff; }
+    #stage-display { font-size: 16px; background: rgba(255,255,255,0.15); padding: 4px 12px; border-radius: 15px; }
+    
+    /* نمایش وضعیت آیتم‌ها */
+    #powerup-status { position: absolute; top: 100px; width: 100%; display: flex; justify-content: center; gap: 10px; z-index: 5; font-size: 14px; font-weight: bold; pointer-events: none; }
+    .status-item { background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 10px; border: 1px solid #fff; }
+
+    /* بازیکن */
+    #player { position: absolute; bottom: 50px; width: 30px; height: 30px; border-radius: 50%; background: #fff; box-shadow: 0 0 20px #00e5ff, 0 0 40px #00e5ff; z-index: 4; transform: translateX(-50%); transition: box-shadow 0.3s; }
+    #player.shielded { box-shadow: 0 0 30px #2196f3, 0 0 60px #2196f3; border: 2px solid #2196f3; }
+    #player.magnetized { box-shadow: 0 0 30px #fdd835, 0 0 60px #fdd835; border: 2px solid #fdd835; }
+
+    /* موانع */
+    .obstacle { position: absolute; z-index: 3; display: flex; align-items: center; justify-content: center; transition: transform 0.1s; }
+    .shape-circle { width: 45px; height: 45px; border-radius: 50%; }
+    .shape-square { width: 40px; height: 40px; border-radius: 8px; }
+    .shape-rect { width: 80px; height: 20px; border-radius: 10px; }
+    .shape-diamond { width: 35px; height: 35px; border-radius: 5px; }
+    .shape-oval { width: 90px; height: 25px; border-radius: 50%; }
+    .powerup { width: 45px; height: 45px; border-radius: 50%; animation: powerPulse 0.5s infinite alternate; font-size: 24px; }
+    @keyframes powerPulse { from { transform: scale(1); } to { transform: scale(1.2); } }
+
+    #touch-zone { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; }
+
+    /* صفحه‌ها */
+    .screen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,15,26,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 50; padding: 20px; text-align: center; }
+    .screen h1 { font-size: 28px; color: #00e5ff; margin-bottom: 15px; }
+    .screen p { font-size: 14px; line-height: 1.8; margin-bottom: 20px; color: #ccc; }
+    .btn { padding: 12px 40px; font-size: 18px; font-weight: bold; border: none; border-radius: 50px; background: linear-gradient(135deg, #00e5ff, #ff5252); color: #111; cursor: pointer; box-shadow: 0 5px 15px rgba(0,229,255,0.3); margin: 5px; transition: transform 0.1s; }
+    .btn:active { transform: scale(0.95); }
+    .btn.sec { background: rgba(255,255,255,0.15); color: #fff; box-shadow: none; }
+    
+    /* سایر */
+    .hidden { display: none !important; }
+    #toast { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0); background: #fdd835; color: #000; padding: 15px 30px; border-radius: 10px; font-weight: bold; z-index: 999; transition: 0.3s; pointer-events: none; text-align: center; }
+    #toast.show { transform: translate(-50%, -50%) scale(1); }
+</style>
+</head>
+<body>
+
+<div id="game-area">
+    <button id="sound-btn" class="top-btn" onclick="toggleSound()">🔊</button>
+    <button id="pause-btn" class="top-btn" onclick="togglePause()">⏸</button>
+
+    <div id="top-hud">
+        <div id="score-display">امتیاز: <span id="score">0</span></div>
+        <div id="stage-display">مرحله ۱</div>
+    </div>
+    
+    <div id="powerup-status"></div>
+    <div id="toast"></div>
+
+    <div id="touch-zone"></div>
+    <div id="player"></div>
+
+    <!-- صفحه شروع -->
+    <div id="start-screen" class="screen">
+        <h1>مسیر آینه ۲.۰</h1>
+        <p>
+            توپ رو با کشیدن انگشت حرکت بده.<br>
+            ⚠️ <b>کنترل‌ها برعکسن!</b><br>
+            <b>دایره‌ها:</b> باید بزنی!<br>
+            <b>بقیه:</b> جاخالی بده!<br><br>
+            <span style="color:#2196f3">🛡 سپر:</span> یک جان اضافه<br>
+            <span style="color:#4caf50">🐢 کندی:</span> ۵ ثانیه آروم میشه<br>
+            <span style="color:#fdd835">✨ آهنربا:</span> جذب دایره‌ها (۵ ثانیه)<br>
+            <span style="color:#ff5252">💥 بمب:</span> نابودی همه موانع بد
+        </p>
+        <div style="color:#fdd835; font-weight:bold; margin-bottom:10px;">🏆 رکورد: <span id="best-score">0</span></div>
+        <button class="btn" onclick="startGame()">شروع بازی</button>
+    </div>
+
+    <!-- صفحه باخت -->
+    <div id="end-screen" class="screen hidden">
+        <h1 style="color:#ff5252">باختی!</h1>
+        <p>امتیاز شما: <b id="final-score" style="font-size:32px; color:#00e5ff">0</b></p>
+        <button class="btn" onclick="startGame()">تلاش دوباره</button>
+    </div>
+</div>
+
+<script>
+// ==========================================
+// هسته اصلی بازی
+// ==========================================
+const gameArea = document.getElementById('game-area');
+const player = document.getElementById('player');
+const scoreEl = document.getElementById('score');
+const comboEl = document.getElementById('powerup-status');
+const toastEl = document.getElementById('toast');
+const startScreen = document.getElementById('start-screen');
+const endScreen = document.getElementById('end-screen');
+const pauseBtn = document.getElementById('pause-btn');
+const soundBtn = document.getElementById('sound-btn');
+
+let state = {
+    isPlaying: false, isPaused: false, score: 0, level: 0, 
+    playerX: 200, targetX: 200, isTouching: false, touchStartX: 0,
+    gameSpeed: 3.5, baseSpeed: 3.5, spawnTimer: 0, spawnInterval: 1100, lastTime: 0,
+    obstacles: [], animationId: null, scoreInterval: null,
+    soundOn: true,
+    bestScore: parseInt(localStorage.getItem('mirrorPath_bestScore') || '0'),
+    
+    // استیت آیتم‌ها
+    shieldActive: false,
+    magnetTimer: 0,
+    slowTimer: 0
+};
+
+// ==========================================
+// صدا (Web Audio API)
+// ==========================================
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+function playSound(type) {
+    if (!state.soundOn) return;
+    if (!audioCtx) audioCtx = new AudioContext();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    const now = audioCtx.currentTime;
+
+    if (type === 'hit') {
+        osc.type = 'sine'; osc.frequency.setValueAtTime(880, now);
+        osc.frequency.exponentialRampToValueAtTime(1320, now + 0.1);
+        gain.gain.setValueAtTime(0.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        osc.start(now); osc.stop(now + 0.1);
+    } else if (type === 'bad') {
+        osc.type = 'square'; osc.frequency.setValueAtTime(150, now);
+        gain.gain.setValueAtTime(0.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc.start(now); osc.stop(now + 0.3);
+    } else if (type === 'power') {
+        osc.type = 'triangle'; osc.frequency.setValueAtTime(400, now);
+        osc.frequency.exponentialRampToValueAtTime(1000, now + 0.2);
+        gain.gain.setValueAtTime(0.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+        osc.start(now); osc.stop(now + 0.2);
+    }
+}
+
+// ==========================================
+// مکانیک‌های اصلی
+// ==========================================
+function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    setTimeout(() => toastEl.classList.remove('show'), 1500);
+}
+
+function updatePowerupUI() {
+    comboEl.innerHTML = '';
+    if (state.shieldActive) comboEl.innerHTML += '<div class="status-item" style="color:#2196f3">🛡 سپر</div>';
+    if (state.slowTimer > 0) comboEl.innerHTML += `<div class="status-item" style="color:#4caf50">🐢 ${Math.ceil(state.slowTimer/1000)}s</div>`;
+    if (state.magnetTimer > 0) comboEl.innerHTML += `<div class="status-item" style="color:#fdd835">✨ ${Math.ceil(state.magnetTimer/1000)}s</div>`;
+}
+
+function spawnObstacle() {
+    const el = document.createElement('div');
+    el.className = 'obstacle';
+    
+    // شانس ۸ درصدی برای آیتم ویژه
+    const isPowerUp = Math.random() < 0.08;
+    let isHitTarget = false;
+    
+    if (isPowerUp) {
+        const powerups = ['🛡', '🐢', '✨', '💥'];
+        const p = powerups[Math.floor(Math.random() * powerups.length)];
+        el.classList.add('powerup');
+        el.textContent = p;
+        el.dataset.power = p;
+        el.style.background = 'rgba(255,255,255,0.2)';
+        el.style.boxShadow = '0 0 15px #fff';
+    } else {
+        const shapes = ['shape-circle', 'shape-square', 'shape-rect', 'shape-diamond', 'shape-oval'];
+        const shape = shapes[Math.floor(Math.random() * shapes.length)];
+        el.classList.add(shape);
+        
+        const colors = ['#ff5252', '#ff9800', '#e91e63', '#3f51b5', '#00bcd4', '#009688', '#4caf50'];
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        el.style.background = color;
+        el.style.boxShadow = `0 0 15px ${color}`;
+        
+        isHitTarget = (shape === 'shape-circle');
+    }
+
+    const obsX = Math.random() * (gameArea.clientWidth - 50);
+    el.style.left = obsX + 'px';
+    el.style.top = '-50px';
+
+    gameArea.appendChild(el);
+    state.obstacles.push({ el, y: -50, isHitTarget, isPowerUp, power: el.dataset.power, x: obsX });
+}
+
+// ==========================================
+// حلقه بازی
+// ==========================================
+function gameLoop(timestamp) {
+    if (!state.isPlaying || state.isPaused) return;
+    if (!state.lastTime) state.lastTime = timestamp;
+    const dt = timestamp - state.lastTime;
+    state.lastTime = timestamp;
+
+    // محاسبه تایمر آیتم‌ها
+    if (state.slowTimer > 0) state.slowTimer -= dt;
+    if (state.magnetTimer > 0) state.magnetTimer -= dt;
+    updatePowerupUI();
+
+    // تنظیم سرعت بر اساس آیتم کندی
+    let currentSpeed = state.gameSpeed;
+    if (state.slowTimer > 0) currentSpeed = state.gameSpeed * 0.5;
+
+    // حرکت نرم توپ
+    state.playerX += (state.targetX - state.playerX) * 0.15;
+    player.style.left = state.playerX + 'px';
+
+    // تولید موانع
+    state.spawnInterval = Math.max(400, 1100 - (state.level * 80));
+    state.spawnTimer += dt;
+    if (state.spawnTimer > state.spawnInterval) {
+        spawnObstacle();
+        state.spawnTimer = 0;
+    }
+
+    const playerRect = player.getBoundingClientRect();
+    const playerCenterX = playerRect.left + playerRect.width / 2;
+
+    for (let i = state.obstacles.length - 1; i >= 0; i--) {
+        let obs = state.obstacles[i];
+        obs.y += currentSpeed;
+        
+        // مکانیک آهنربا
+        if (state.magnetTimer > 0 && obs.isHitTarget) {
+            const obsRect = obs.el.getBoundingClientRect();
+            const obsCenterX = obsRect.left + obsRect.width / 2;
+            // کشیدن به سمت توپ
+            obs.x += (playerCenterX - obsCenterX) * 0.05;
+            obs.el.style.left = obs.x + 'px';
+        }
+
+        obs.el.style.top = obs.y + 'px';
+
+        const obsRect = obs.el.getBoundingClientRect();
+
+        // برخورد
+        if (playerRect.left < obsRect.right && playerRect.right > obsRect.left &&
+            playerRect.top < obsRect.bottom && playerRect.bottom > obsRect.top) {
+            
+            obs.el.remove();
+            state.obstacles.splice(i, 1);
+
+            if (obs.isPowerUp) {
+                activatePowerUp(obs.power);
+            } else if (obs.isHitTarget) {
+                state.score += 1;
+                scoreEl.textContent = state.score;
+                playSound('hit');
+            } else {
+                // برخورد با مانع بد
+                if (state.shieldActive) {
+                    state.shieldActive = false;
+                    player.classList.remove('shielded');
+                    showToast('🛡 سپر شکست!');
+                    playSound('power');
+                } else {
+                    return gameOver();
+                }
+            }
+            continue;
+        }
+
+        // خروج از صفحه
+        if (obs.y > gameArea.clientHeight) {
+            if (obs.isHitTarget) return gameOver(); // دایره‌ای که از دست رفت
+            obs.el.remove();
+            state.obstacles.splice(i, 1);
+        }
+    }
+
+    state.animationId = requestAnimationFrame(gameLoop);
+}
+
+// ==========================================
+// دستورالعمل آیتم‌ها (ویژگی‌ها)
+// ==========================================
+function activatePowerUp(type) {
+    playSound('power');
+    if (type === '🛡') {
+        // ۱. سپر: یک جان اضافه
+        state.shieldActive = true;
+        player.classList.add('shielded');
+        showToast('🛡 سپر فعال شد!');
+        
+    } else if (type === '🐢') {
+        // ۲. کندی: سرعت نصف میشه برای ۵ ثانیه
+        state.slowTimer = 5000;
+        showToast('🐢 زمان کند شد!');
+        
+    } else if (type === '✨') {
+        // ۳. آهنربا: جذب دایره‌ها برای ۵ ثانیه
+        state.magnetTimer = 5000;
+        player.classList.add('magnetized');
+        showToast('✨ آهنربا فعال شد!');
+        setTimeout(() => player.classList.remove('magnetized'), 5000);
+        
+    } else if (type === '💥') {
+        // ۴. بمب: نابودی همه موانع بد
+        showToast('💥 انفجار!');
+        for (let i = state.obstacles.length - 1; i >= 0; i--) {
+            if (!state.obstacles[i].isHitTarget && !state.obstacles[i].isPowerUp) {
+                state.obstacles[i].el.remove();
+                state.obstacles.splice(i, 1);
+            }
+        }
+    }
+}
+
+// ==========================================
+// کنترل‌ها (لمسی و ماوس)
+// ==========================================
+const touchZone = document.getElementById('touch-zone');
+
+function handleMove(clientX) {
+    if (!state.isPlaying || state.isPaused || !state.isTouching) return;
+    const diff = clientX - state.touchStartX;
+    state.targetX -= diff * 1.5; // معکوس کردن کنترل
+    state.targetX = Math.max(20, Math.min(gameArea.clientWidth - 20, state.targetX));
+    state.touchStartX = clientX;
+}
+
+touchZone.addEventListener('touchstart', e => { state.isTouching = true; state.touchStartX = e.touches[0].clientX; });
+touchZone.addEventListener('touchmove', e => handleMove(e.touches[0].clientX));
+touchZone.addEventListener('touchend', () => state.isTouching = false);
+
+touchZone.addEventListener('mousedown', e => { state.isTouching = true; state.touchStartX = e.clientX; });
+window.addEventListener('mousemove', e => handleMove(e.clientX));
+window.addEventListener('mouseup', () => state.isTouching = false);
+
+// ==========================================
+// مدیریت بازی
+// ==========================================
+function startScoreTimer() {
+    clearInterval(state.scoreInterval);
+    state.scoreInterval = setInterval(() => {
+        if (state.isPlaying && !state.isPaused) {
+            state.score += 1;
+            scoreEl.textContent = state.score;
+            
+            // افزایش سطح هر ۶۰ امتیاز
+            const newLevel = Math.floor(state.score / 60);
+            if (newLevel > state.level) {
+                state.level = newLevel;
+                state.gameSpeed += 1.2;
+                gameArea.style.backgroundColor = `hsl(${Math.random() * 360}, 30%, 15%)`;
+            }
+        }
+    }, 100);
+}
+
+function startGame() {
+    state.obstacles.forEach(o => o.el.remove());
+    state.obstacles = [];
+    state.score = 0; state.level = 0;
+    state.gameSpeed = 3.5;
+    state.shieldActive = false; state.magnetTimer = 0; state.slowTimer = 0;
+    state.playerX = gameArea.clientWidth / 2;
+    state.targetX = state.playerX;
+    state.isPlaying = true; state.isPaused = false;
+    
+    scoreEl.textContent = '0';
+    player.style.left = state.playerX + 'px';
+    player.className = ''; // پاک کردن افکت‌ها
+    
+    startScreen.classList.add('hidden');
+    endScreen.classList.add('hidden');
+    pauseBtn.classList.add('show');
+    soundBtn.classList.add('show');
+    
+    startScoreTimer();
+    state.animationId = requestAnimationFrame(gameLoop);
+}
+
+function gameOver() {
+    state.isPlaying = false;
+    cancelAnimationFrame(state.animationId);
+    clearInterval(state.scoreInterval);
+    playSound('bad');
+    
+    if (state.score > state.bestScore) {
+        state.bestScore = state.score;
+        localStorage.setItem('mirrorPath_bestScore', state.bestScore);
+        document.getElementById('best-score').textContent = state.bestScore;
+        showToast('🎉 رکورد جدید!');
+    }
+    
+    document.getElementById('final-score').textContent = state.score;
+    setTimeout(() => endScreen.classList.remove('hidden'), 300);
+}
+
+function togglePause() {
+    if (!state.isPlaying) return;
+    state.isPaused = !state.isPaused;
+    pauseBtn.textContent = state.isPaused ? '▶' : '⏸';
+    if (state.isPaused) cancelAnimationFrame(state.animationId);
+    else { state.lastTime = 0; state.animationId = requestAnimationFrame(gameLoop); }
+}
+
+function toggleSound() {
+    state.soundOn = !state.soundOn;
+    soundBtn.textContent = state.soundOn ? '🔊' : '🔇';
+}
+
+// لود اولیه
+document.getElementById('best-score').textContent = state.bestScore;
+</script>
+</body>
+</html>
